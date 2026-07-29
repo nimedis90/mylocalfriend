@@ -309,6 +309,8 @@ fun ChatInputField(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .navigationBarsPadding() // Keeps distance from bottom system bar
+            .imePadding()            // Pushes input bar up above the software keyboard
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
