@@ -1,4 +1,4 @@
-package com.example.mylocalfriend.ui.theme
+package my.local.friend.android.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

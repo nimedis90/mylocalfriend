@@ -1,14 +1,15 @@
-package com.example.mylocalfriend
+package my.local.friend.android.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
@@ -19,7 +20,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.launch
+import my.local.friend.android.app.ui.AuthScreen
+import my.local.friend.android.app.ui.OnboardingScreen
 
 class MainActivity : ComponentActivity() {
     private val viewModel: TutorViewModel by viewModels()
@@ -28,8 +34,52 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
-                MainAppScreen(viewModel = viewModel)
+                AppNavigation(viewModel = viewModel)
             }
+        }
+    }
+}
+
+@Composable
+fun AppNavigation(viewModel: TutorViewModel) {
+    val navController = rememberNavController()
+    val currentUser = viewModel.currentUser
+    val userPrefs = viewModel.userPrefs
+
+    // Navigation logic based on Auth and Onboarding state
+    LaunchedEffect(currentUser, userPrefs.isOnboarded) {
+        if (currentUser == null) {
+            navController.navigate("auth") {
+                popUpTo(0)
+            }
+        } else if (!userPrefs.isOnboarded) {
+            navController.navigate("onboarding") {
+                popUpTo(0)
+            }
+        } else {
+            navController.navigate("main") {
+                popUpTo(0)
+            }
+        }
+    }
+
+    NavHost(navController = navController, startDestination = "auth") {
+        composable("auth") {
+            AuthScreen(
+                onAuthSuccess = { /* Handled by LaunchedEffect */ },
+                onSignIn = { email, pass -> viewModel.signIn(email, pass) },
+                onSignUp = { email, pass -> viewModel.signUp(email, pass) },
+                isLoading = viewModel.isAuthLoading
+            )
+        }
+        composable("onboarding") {
+            OnboardingScreen(
+                onComplete = { prefs -> viewModel.saveUserPreferences(prefs) },
+                isLoading = viewModel.isPrefsLoading
+            )
+        }
+        composable("main") {
+            MainAppScreen(viewModel = viewModel)
         }
     }
 }
@@ -40,6 +90,7 @@ fun MainAppScreen(viewModel: TutorViewModel) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var userInputText by remember { mutableStateOf("") }
+    var showTopicSwitcher by remember { mutableStateOf(false) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -54,10 +105,15 @@ fun MainAppScreen(viewModel: TutorViewModel) {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("🧑‍🏫 Thomas - AI Language Tutor") },
+                    title = { Text("🧑‍🏫 Thomas") },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Default.Menu, contentDescription = "Settings")
+                            Icon(Icons.Default.Menu, contentDescription = "Profile")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { showTopicSwitcher = true }) {
+                            Icon(Icons.Default.Edit, contentDescription = "Change Topic")
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -87,7 +143,10 @@ fun MainAppScreen(viewModel: TutorViewModel) {
                     .padding(innerPadding)
             ) {
                 if (!viewModel.isLessonStarted) {
-                    WelcomeScreen(onStart = { scope.launch { drawerState.open() } })
+                    WelcomeScreen(
+                        userName = viewModel.currentUser?.email?.split("@")?.get(0) ?: "Friend",
+                        onStart = { viewModel.startLesson() }
+                    )
                 } else {
                     ChatAndVocabFeed(viewModel = viewModel)
                 }
@@ -97,25 +156,74 @@ fun MainAppScreen(viewModel: TutorViewModel) {
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
+
+                if (showTopicSwitcher) {
+                    TopicSwitcherDialog(
+                        currentTopic = viewModel.userPrefs.favoriteTopics,
+                        onDismiss = { showTopicSwitcher = false },
+                        onConfirm = { newTopic ->
+                            viewModel.saveUserPreferences(viewModel.userPrefs.copy(favoriteTopics = newTopic))
+                            showTopicSwitcher = false
+                            viewModel.startLesson() // Restart with new topic
+                        }
+                    )
+                }
             }
         }
     }
 }
 
-// --- CONFIG DRAWER (STREAMLIT SIDEBAR EQUIVALENT) ---
+@Composable
+fun TopicSwitcherDialog(
+    currentTopic: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var topic by remember { mutableStateOf(currentTopic) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Change Conversation Topic") },
+        text = {
+            OutlinedTextField(
+                value = topic,
+                onValueChange = { topic = it },
+                label = { Text("Topic") },
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(topic) }) {
+                Text("Update & Restart")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+// --- CONFIG DRAWER (PROFILE SECTION) ---
 @Composable
 fun ConfigDrawerContent(viewModel: TutorViewModel, onClose: () -> Unit) {
+    val prefs = viewModel.userPrefs
+    var nativeLang by remember { mutableStateOf(prefs.nativeLang) }
+    var targetLang by remember { mutableStateOf(prefs.targetLang) }
+    var targetArea by remember { mutableStateOf(prefs.targetArea) }
+    var targetLevel by remember { mutableStateOf(prefs.targetLevel) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        Text("🎓 Language Profile", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text("👤 Profile & Preferences", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(12.dp))
 
         OutlinedTextField(
-            value = viewModel.nativeLang,
-            onValueChange = { viewModel.nativeLang = it },
+            value = nativeLang,
+            onValueChange = { nativeLang = it },
             label = { Text("Native Language") },
             modifier = Modifier.fillMaxWidth()
         )
@@ -123,29 +231,29 @@ fun ConfigDrawerContent(viewModel: TutorViewModel, onClose: () -> Unit) {
         Spacer(modifier = Modifier.height(8.dp))
 
         OutlinedTextField(
-            value = viewModel.targetLang,
-            onValueChange = { viewModel.targetLang = it },
+            value = targetLang,
+            onValueChange = { targetLang = it },
             label = { Text("Language to Learn") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("🎯 Interests & Location", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = viewModel.targetArea,
-            onValueChange = { viewModel.targetArea = it },
-            label = { Text("City / Region") },
             modifier = Modifier.fillMaxWidth()
         )
 
         Spacer(modifier = Modifier.height(8.dp))
 
         OutlinedTextField(
-            value = viewModel.selectedTopics,
-            onValueChange = { viewModel.selectedTopics = it },
-            label = { Text("Topics of Interest") },
+            value = targetLevel,
+            onValueChange = { targetLevel = it },
+            label = { Text("Level (A1, A2, B1...)") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("📍 Location", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = targetArea,
+            onValueChange = { targetArea = it },
+            label = { Text("City / Region") },
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -153,19 +261,44 @@ fun ConfigDrawerContent(viewModel: TutorViewModel, onClose: () -> Unit) {
 
         Button(
             onClick = {
+                viewModel.saveUserPreferences(
+                    prefs.copy(
+                        nativeLang = nativeLang,
+                        targetLang = targetLang,
+                        targetLevel = targetLevel,
+                        targetArea = targetArea
+                    )
+                )
                 onClose()
-                viewModel.startLesson()
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("🚀 Start News Lesson")
+            Text("Save Changes")
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(8.dp))
+
+        TextButton(
+            onClick = {
+                viewModel.signOut()
+                onClose()
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+        ) {
+            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Logout")
         }
     }
 }
 
 // --- WELCOME SCREEN ---
 @Composable
-fun WelcomeScreen(onStart: () -> Unit) {
+fun WelcomeScreen(userName: String, onStart: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -173,15 +306,15 @@ fun WelcomeScreen(onStart: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("🧑‍🏫 Welcome to Thomas!", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text("🧑‍🏫 Welcome, $userName!", fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            "Learn languages through real-time news! Open the menu icon to set your target language, city, and topics, then start your lesson.",
+            "Ready for today's lesson? We'll look at the latest news based on your preferences.",
             fontSize = 16.sp
         )
         Spacer(modifier = Modifier.height(24.dp))
         Button(onClick = onStart) {
-            Text("⚙️ Open Preferences Menu")
+            Text("🚀 Start News Lesson")
         }
     }
 }
@@ -219,8 +352,8 @@ fun ChatAndVocabFeed(viewModel: TutorViewModel) {
             } else {
                 AssistantMessageCard(
                     response = msg.parsedResponse,
-                    targetLang = viewModel.targetLang,
-                    nativeLang = viewModel.nativeLang
+                    targetLang = viewModel.userPrefs.targetLang,
+                    nativeLang = viewModel.userPrefs.nativeLang
                 )
             }
             Spacer(modifier = Modifier.height(12.dp))
@@ -267,7 +400,7 @@ fun AssistantMessageCard(
                     Text("📝 Language Feedback:", fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(response.feedback)
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 }
 
                 // 2. Tabs for Target vs Translation

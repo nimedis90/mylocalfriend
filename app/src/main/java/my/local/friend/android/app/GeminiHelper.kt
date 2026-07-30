@@ -1,4 +1,4 @@
-package com.example.mylocalfriend
+package my.local.friend.android.app
 
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
