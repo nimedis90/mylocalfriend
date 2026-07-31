@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="PLACEHOLDER" />
-                  <option name="mobileSdkAppId" value="" />
-                  <option name="projectId" value="" />
-                  <option name="projectNumber" value="" />
+                  <option name="appId" value="my.local.friend.android.app" />
+                  <option name="mobileSdkAppId" value="1:1053275710391:android:15f5802b7aed9c0250be32" />
+                  <option name="projectId" value="my-local-friend-e4c64" />
+                  <option name="projectNumber" value="1053275710391" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />
