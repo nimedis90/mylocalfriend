@@ -11,22 +11,30 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+
 @Composable
 fun AuthScreen(
     onAuthSuccess: () -> Unit,
     onSignIn: suspend (String, String) -> Result<Any?>,
     onSignUp: suspend (String, String) -> Result<Any?>,
+    onForgotPassword: suspend (String) -> Result<Unit>,
     isLoading: Boolean
 ) {
     var isLoginMode by remember { mutableStateOf(true) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var successMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val scrollState = rememberScrollState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(scrollState)
+            .imePadding()
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -52,20 +60,51 @@ fun AuthScreen(
             singleLine = true
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        if (isLoginMode || !isLoginMode) { // Simplified check, both modes need password except for reset
+             Spacer(modifier = Modifier.height(16.dp))
 
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Password") },
-            modifier = Modifier.fillMaxWidth(),
-            visualTransformation = PasswordVisualTransformation(),
-            singleLine = true
-        )
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Password") },
+                modifier = Modifier.fillMaxWidth(),
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true
+            )
+        }
 
         if (errorMessage != null) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(text = errorMessage!!, color = MaterialTheme.colorScheme.error)
+        }
+        
+        if (successMessage != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = successMessage!!, color = MaterialTheme.colorScheme.primary)
+        }
+
+        if (isLoginMode) {
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                TextButton(onClick = {
+                    errorMessage = null
+                    successMessage = null
+                    val emailTrimmed = email.trim()
+                    if (emailTrimmed.isEmpty()) {
+                        errorMessage = "Please enter your email to reset password"
+                        return@TextButton
+                    }
+                    scope.launch {
+                        val result = onForgotPassword(emailTrimmed)
+                        if (result.isSuccess) {
+                            successMessage = "Reset email sent! Check your inbox."
+                        } else {
+                            errorMessage = result.exceptionOrNull()?.localizedMessage ?: "Failed to send reset email"
+                        }
+                    }
+                }) {
+                    Text("Forgot Password?")
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -73,6 +112,7 @@ fun AuthScreen(
         Button(
             onClick = {
                 errorMessage = null
+                successMessage = null
                 val emailTrimmed = email.trim()
                 if (emailTrimmed.isEmpty() || password.isEmpty()) {
                     errorMessage = "Please fill all fields"
@@ -108,7 +148,11 @@ fun AuthScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        TextButton(onClick = { isLoginMode = !isLoginMode }) {
+        TextButton(onClick = { 
+            isLoginMode = !isLoginMode 
+            errorMessage = null
+            successMessage = null
+        }) {
             Text(if (isLoginMode) "Don't have an account? Sign Up" else "Already have an account? Sign In")
         }
     }

@@ -45,7 +45,7 @@ fun parseGeminiResponse(rawText: String): TutorResponse {
 class GeminiHelper {
 
     // ⚠️ Replace with your actual Gemini API key
-    private val apiKey = "GEMINI_API_KEY"
+    private val apiKey = BuildConfig.GEMINI_API_KEY
 
     fun getModel(
         area: String,

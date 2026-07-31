@@ -10,6 +10,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import my.local.friend.android.app.data.UserPreferences
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+
 @Composable
 fun OnboardingScreen(
     onComplete: (UserPreferences) -> Unit,
@@ -19,10 +22,13 @@ fun OnboardingScreen(
     var targetLang by remember { mutableStateOf("") }
     var targetArea by remember { mutableStateOf("") }
     var selectedTopics by remember { mutableStateOf("") }
+    val scrollState = rememberScrollState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(scrollState)
+            .imePadding()
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center

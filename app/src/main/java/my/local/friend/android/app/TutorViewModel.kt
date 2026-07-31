@@ -110,6 +110,10 @@ class TutorViewModel : ViewModel() {
         authRepository.signOut()
     }
 
+    suspend fun resetPassword(email: String): Result<Unit> {
+        return authRepository.sendPasswordResetEmail(email)
+    }
+
     // --- START A LESSON ---
     fun startLesson() {
         viewModelScope.launch {

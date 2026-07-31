@@ -9,7 +9,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
@@ -69,6 +68,7 @@ fun AppNavigation(viewModel: TutorViewModel) {
                 onAuthSuccess = { /* Handled by LaunchedEffect */ },
                 onSignIn = { email, pass -> viewModel.signIn(email, pass) },
                 onSignUp = { email, pass -> viewModel.signUp(email, pass) },
+                onForgotPassword = { email -> viewModel.resetPassword(email) },
                 isLoading = viewModel.isAuthLoading
             )
         }
@@ -90,7 +90,6 @@ fun MainAppScreen(viewModel: TutorViewModel) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var userInputText by remember { mutableStateOf("") }
-    var showTopicSwitcher by remember { mutableStateOf(false) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -109,11 +108,6 @@ fun MainAppScreen(viewModel: TutorViewModel) {
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
                             Icon(Icons.Default.Menu, contentDescription = "Profile")
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = { showTopicSwitcher = true }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Change Topic")
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -156,52 +150,9 @@ fun MainAppScreen(viewModel: TutorViewModel) {
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
-
-                if (showTopicSwitcher) {
-                    TopicSwitcherDialog(
-                        currentTopic = viewModel.userPrefs.favoriteTopics,
-                        onDismiss = { showTopicSwitcher = false },
-                        onConfirm = { newTopic ->
-                            viewModel.saveUserPreferences(viewModel.userPrefs.copy(favoriteTopics = newTopic))
-                            showTopicSwitcher = false
-                            viewModel.startLesson() // Restart with new topic
-                        }
-                    )
-                }
             }
         }
     }
-}
-
-@Composable
-fun TopicSwitcherDialog(
-    currentTopic: String,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
-) {
-    var topic by remember { mutableStateOf(currentTopic) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Change Conversation Topic") },
-        text = {
-            OutlinedTextField(
-                value = topic,
-                onValueChange = { topic = it },
-                label = { Text("Topic") },
-                modifier = Modifier.fillMaxWidth()
-            )
-        },
-        confirmButton = {
-            Button(onClick = { onConfirm(topic) }) {
-                Text("Update & Restart")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
 }
 
 // --- CONFIG DRAWER (PROFILE SECTION) ---
@@ -212,6 +163,7 @@ fun ConfigDrawerContent(viewModel: TutorViewModel, onClose: () -> Unit) {
     var targetLang by remember { mutableStateOf(prefs.targetLang) }
     var targetArea by remember { mutableStateOf(prefs.targetArea) }
     var targetLevel by remember { mutableStateOf(prefs.targetLevel) }
+    var favoriteTopics by remember { mutableStateOf(prefs.favoriteTopics) }
 
     Column(
         modifier = Modifier
@@ -247,13 +199,22 @@ fun ConfigDrawerContent(viewModel: TutorViewModel, onClose: () -> Unit) {
         )
 
         Spacer(modifier = Modifier.height(16.dp))
-        Text("📍 Location", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text("📍 Location & Topics", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(12.dp))
 
         OutlinedTextField(
             value = targetArea,
             onValueChange = { targetArea = it },
             label = { Text("City / Region") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = favoriteTopics,
+            onValueChange = { favoriteTopics = it },
+            label = { Text("Topics of Interest") },
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -266,14 +227,16 @@ fun ConfigDrawerContent(viewModel: TutorViewModel, onClose: () -> Unit) {
                         nativeLang = nativeLang,
                         targetLang = targetLang,
                         targetLevel = targetLevel,
-                        targetArea = targetArea
+                        targetArea = targetArea,
+                        favoriteTopics = favoriteTopics
                     )
                 )
                 onClose()
+                viewModel.startLesson()
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Save Changes")
+            Text("Save & Restart Lesson")
         }
 
         Spacer(modifier = Modifier.weight(1f))
