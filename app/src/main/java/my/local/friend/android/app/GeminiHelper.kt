@@ -2,6 +2,9 @@ package my.local.friend.android.app
 
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
+import com.google.ai.client.generativeai.type.generationConfig
+import kotlinx.serialization.json.Json
+import my.local.friend.android.app.data.models.GeminiChatResponse
 
 // --- 1. DATA MODELS ---
 data class TutorResponse(
@@ -11,10 +14,11 @@ data class TutorResponse(
     val vocabulary: String = ""
 )
 
-data class ChatMessage(
+data class UIChatMessage(
     val role: String, // "user" or "assistant"
     val content: String,
-    val parsedResponse: TutorResponse? = null
+    val parsedResponse: TutorResponse? = null,
+    val jsonResponse: GeminiChatResponse? = null
 )
 
 // --- 2. PARSER FUNCTION ---
@@ -41,6 +45,23 @@ fun parseGeminiResponse(rawText: String): TutorResponse {
     return TutorResponse(feedback, targetText, nativeText, vocabulary)
 }
 
+/**
+ * Parses the structured JSON response from Gemini into a [GeminiChatResponse] object.
+ */
+fun parseGeminiJsonResponse(jsonString: String): GeminiChatResponse {
+    return try {
+        Json.decodeFromString<GeminiChatResponse>(jsonString)
+    } catch (e: Exception) {
+        // Fallback or error handling
+        GeminiChatResponse(
+            reply = "Error parsing response: ${e.message}",
+            errorCount = 0,
+            corrections = emptyList(),
+            topics = emptyList()
+        )
+    }
+}
+
 // --- 3. GEMINI SERVICE ---
 class GeminiHelper {
 
@@ -57,42 +78,32 @@ class GeminiHelper {
 
         val systemInstruction = """
             Your name is Thomas. You are a friendly language tutor and local news expert for $area.
-            CRITICAL RULE: The target language to teach is strictly '$targetLang'.
-            The user's native language is $nativeLang.
             The user wants to learn $targetLang and their current proficiency level is '$level'.
+            The user's native language is $nativeLang.
             Always talk about topics related to: $topics.
 
+            === CRITICAL RULE ===
+            You MUST respond ONLY with a valid JSON object. Do not include any text outside the JSON.
+            The JSON structure MUST follow this schema:
+            {
+              "reply": "Your response to the user in '$targetLang'. This should include feedback on their previous message in '$nativeLang', followed by localized news or conversation in '$targetLang'.",
+              "errorCount": 0, // Number of linguistic errors found in the user's last message
+              "corrections": ["Correction 1", "Correction 2"], // Specific linguistic corrections in '$nativeLang'
+              "topics": ["topic1", "topic2"] // List of relevant topics discussed
+            }
+
             === LANGUAGE RULES ===
-            1. FEEDBACK must be in $nativeLang.
-            2. NEWS_TARGET MUST BE EXCLUSIVELY WRITTEN IN $targetLang. Do NOT use $nativeLang here!
-            3. NEWS_NATIVE must be the direct translation of NEWS_TARGET into $nativeLang.
-            4. VOCABULARY items must pair $targetLang words with $nativeLang translations.
-
-            === RESPONSE STRUCTURE ===
-            For EVERY message, you MUST format your output using these exact section headers:
-
-            ### FEEDBACK
-            Provide gentle grammar/spelling feedback on the user's last message in $nativeLang.
-            (If it's the very first message, write a warm welcome in $nativeLang introducing yourself as Thomas).
-
-            ### NEWS_TARGET
-            Write the news summary, conversation continuation, and question in $targetLang, strictly calibrated to the '$level' level.
-
-            ### NEWS_NATIVE
-            Provide the exact full translation of the 'NEWS_TARGET' section into $nativeLang.
-
-            ### VOCABULARY
-            Extract key learning materials in $nativeLang:
-            - 3-4 Key nouns/words from the text with translation.
-            - 2-3 Useful verbs used in the text.
-            - 1 Common idiom/expression.
-            - IF proficiency level is 'A1' or 'A2', ADD 1-2 basic grammar tips.
+            1. Provide feedback and corrections in $nativeLang.
+            2. The main conversation 'reply' should be primarily in $targetLang, calibrated to the '$level' level.
         """.trimIndent()
 
         return GenerativeModel(
             modelName = "gemini-3.1-flash-lite",
             apiKey = apiKey,
-            systemInstruction = content { text(systemInstruction) }
+            systemInstruction = content { text(systemInstruction) },
+            generationConfig = generationConfig {
+                responseMimeType = "application/json"
+            }
         )
     }
 }

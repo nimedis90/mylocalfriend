@@ -14,19 +14,23 @@ class MyLocalFriendApp : Application() {
         // Setup Notification Channel
         NotificationHelper(this).createNotificationChannel()
         
-        // Schedule Daily Work
-        scheduleDailyUpdate()
+        // Schedule Triple Daily Updates
+        schedulePeriodicUpdate("MorningUpdate", 7, 30)
+        schedulePeriodicUpdate("AfternoonUpdate", 13, 0)
+        schedulePeriodicUpdate("EveningUpdate", 17, 0)
     }
 
-    private fun scheduleDailyUpdate() {
+    private fun schedulePeriodicUpdate(name: String, hour: Int, minute: Int) {
         val calendar = java.util.Calendar.getInstance().apply {
-            if (get(java.util.Calendar.HOUR_OF_DAY) >= 9) {
-                add(java.util.Calendar.DAY_OF_YEAR, 1)
-            }
-            set(java.util.Calendar.HOUR_OF_DAY, 9)
-            set(java.util.Calendar.MINUTE, 0)
+            val now = System.currentTimeMillis()
+            set(java.util.Calendar.HOUR_OF_DAY, hour)
+            set(java.util.Calendar.MINUTE, minute)
             set(java.util.Calendar.SECOND, 0)
             set(java.util.Calendar.MILLISECOND, 0)
+            
+            if (timeInMillis <= now) {
+                add(java.util.Calendar.DAY_OF_YEAR, 1)
+            }
         }
 
         val delay = calendar.timeInMillis - System.currentTimeMillis()
@@ -39,7 +43,7 @@ class MyLocalFriendApp : Application() {
             .build()
 
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "DailyLocalUpdate",
+            name,
             ExistingPeriodicWorkPolicy.UPDATE,
             workRequest
         )

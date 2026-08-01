@@ -14,6 +14,8 @@ import kotlinx.coroutines.launch
 import my.local.friend.android.app.data.AuthRepository
 import my.local.friend.android.app.data.UserPreferences
 import my.local.friend.android.app.data.UserRepository
+import my.local.friend.android.app.data.models.ChatMessage as DataChatMessage
+import java.util.UUID
 
 class TutorViewModel : ViewModel() {
 
@@ -32,7 +34,7 @@ class TutorViewModel : ViewModel() {
     var isPrefsLoading by mutableStateOf(false)
 
     // --- CHAT & UI STATE ---
-    val messages = mutableStateListOf<ChatMessage>()
+    val messages = mutableStateListOf<UIChatMessage>()
     var isLoading by mutableStateOf(false)
     var isLessonStarted by mutableStateOf(false)
     var lastVocabulary by mutableStateOf("")
@@ -139,23 +141,42 @@ class TutorViewModel : ViewModel() {
             try {
                 val response = model.generateContent(initialPrompt)
                 val responseText = response.text ?: ""
-                val parsed = parseGeminiResponse(responseText)
+                val jsonResponse = parseGeminiJsonResponse(responseText)
+                
+                // Map to existing UI model for compatibility
+                val parsed = TutorResponse(
+                    feedback = jsonResponse.corrections.joinToString("\n"),
+                    targetText = jsonResponse.reply
+                )
 
-                if (parsed.vocabulary.isNotEmpty()) {
-                    lastVocabulary = parsed.vocabulary
+                val assistantMessage = UIChatMessage(
+                    role = "assistant",
+                    content = responseText,
+                    parsedResponse = parsed,
+                    jsonResponse = jsonResponse
+                )
+                messages.add(assistantMessage)
+
+                // Persist Assistant message
+                currentUser?.uid?.let { uid ->
+                    userRepository.saveChatMessage(
+                        uid,
+                        DataChatMessage(
+                            id = UUID.randomUUID().toString(),
+                            text = jsonResponse.reply,
+                            isUser = false,
+                            timestamp = System.currentTimeMillis(),
+                            errorCount = jsonResponse.errorCount,
+                            corrections = jsonResponse.corrections,
+                            topics = jsonResponse.topics
+                        )
+                    )
                 }
 
-                messages.add(
-                    ChatMessage(
-                        role = "assistant",
-                        content = responseText,
-                        parsedResponse = parsed
-                    )
-                )
                 isLessonStarted = true
             } catch (e: Exception) {
                 messages.add(
-                    ChatMessage(
+                    UIChatMessage(
                         role = "assistant",
                         content = "Error starting lesson: ${e.localizedMessage}"
                     )
@@ -170,29 +191,63 @@ class TutorViewModel : ViewModel() {
     fun sendMessage(userText: String) {
         if (userText.isBlank() || chatInstance == null) return
 
-        messages.add(ChatMessage(role = "user", content = userText))
+        val userMessage = UIChatMessage(role = "user", content = userText)
+        messages.add(userMessage)
+
+        val uid = currentUser?.uid
+        if (uid != null) {
+            viewModelScope.launch {
+                userRepository.saveChatMessage(
+                    uid,
+                    DataChatMessage(
+                        id = UUID.randomUUID().toString(),
+                        text = userText,
+                        isUser = true,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
+            }
+        }
 
         viewModelScope.launch {
             isLoading = true
             try {
                 val response = chatInstance?.sendMessage(userText)
                 val responseText = response?.text ?: ""
-                val parsed = parseGeminiResponse(responseText)
+                val jsonResponse = parseGeminiJsonResponse(responseText)
 
-                if (parsed.vocabulary.isNotEmpty()) {
-                    lastVocabulary = parsed.vocabulary
-                }
-
-                messages.add(
-                    ChatMessage(
-                        role = "assistant",
-                        content = responseText,
-                        parsedResponse = parsed
-                    )
+                // Map to existing UI model for compatibility
+                val parsed = TutorResponse(
+                    feedback = jsonResponse.corrections.joinToString("\n"),
+                    targetText = jsonResponse.reply
                 )
+
+                val assistantMessage = UIChatMessage(
+                    role = "assistant",
+                    content = responseText,
+                    parsedResponse = parsed,
+                    jsonResponse = jsonResponse
+                )
+                messages.add(assistantMessage)
+
+                // Persist Assistant response
+                if (uid != null) {
+                    userRepository.saveChatMessage(
+                        uid,
+                        DataChatMessage(
+                            id = UUID.randomUUID().toString(),
+                            text = jsonResponse.reply,
+                            isUser = false,
+                            timestamp = System.currentTimeMillis(),
+                            errorCount = jsonResponse.errorCount,
+                            corrections = jsonResponse.corrections,
+                            topics = jsonResponse.topics
+                        )
+                    )
+                }
             } catch (e: Exception) {
                 messages.add(
-                    ChatMessage(
+                    UIChatMessage(
                         role = "assistant",
                         content = "Error: ${e.localizedMessage}"
                     )
