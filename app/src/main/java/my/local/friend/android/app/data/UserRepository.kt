@@ -22,6 +22,23 @@ class UserRepository {
         }
     }
 
+    suspend fun getAllMessages(userId: String): Result<List<ChatMessage>> {
+        return try {
+            val snapshot = usersCollection
+                .document(userId)
+                .collection("messages")
+                .orderBy("timestamp")
+                .get()
+                .await()
+            val messages = snapshot.documents.map { doc ->
+                ChatMessage.fromMap(doc.data ?: emptyMap())
+            }
+            Result.success(messages)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun savePreferences(userId: String, preferences: UserPreferences): Result<Unit> {
         return try {
             usersCollection.document(userId).set(preferences.toMap()).await()

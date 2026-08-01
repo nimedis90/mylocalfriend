@@ -2,6 +2,7 @@ package my.local.friend.android.app
 
 import android.util.Log
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -38,6 +39,14 @@ class TutorViewModel : ViewModel() {
     var isLoading by mutableStateOf(false)
     var isLessonStarted by mutableStateOf(false)
     var lastVocabulary by mutableStateOf("")
+
+    // --- PROGRESS STATE ---
+    var totalMessages by mutableIntStateOf(0)
+    var totalErrors by mutableIntStateOf(0)
+    var topTopics = mutableStateListOf<String>()
+    var narrativeSummary by mutableStateOf("No progress data yet. Keep chatting to see Thomas's feedback!")
+    var recommendations = mutableStateListOf<String>()
+    var isProgressLoading by mutableStateOf(false)
 
     init {
         observeAuthState()
@@ -116,6 +125,69 @@ class TutorViewModel : ViewModel() {
         return authRepository.sendPasswordResetEmail(email)
     }
 
+    // --- PROGRESS DASHBOARD ---
+    fun fetchProgressReport() {
+        val uid = currentUser?.uid ?: return
+        viewModelScope.launch {
+            isProgressLoading = true
+            val result = userRepository.getAllMessages(uid)
+            if (result.isSuccess) {
+                val allMsgs = result.getOrDefault(emptyList())
+                
+                // Quantitative analysis
+                totalMessages = allMsgs.count { it.isUser }
+                totalErrors = allMsgs.sumOf { it.errorCount }
+                
+                val topicsMap = mutableMapOf<String, Int>()
+                allMsgs.forEach { m -> 
+                    m.topics.forEach { t -> topicsMap[t] = topicsMap.getOrDefault(t, 0) + 1 }
+                }
+                topTopics.clear()
+                topTopics.addAll(topicsMap.entries.sortedByDescending { it.value }.take(5).map { it.key })
+
+                // Qualitative analysis via Gemini
+                if (allMsgs.isNotEmpty()) {
+                    generateNarrativeSummary(allMsgs)
+                }
+            }
+            isProgressLoading = false
+        }
+    }
+
+    private suspend fun generateNarrativeSummary(allMsgs: List<DataChatMessage>) {
+        try {
+            val model = geminiHelper.getProgressModel(userPrefs.nativeLang, userPrefs.targetLang)
+            
+            // Prepare context (last 20 corrections for brevity/context limits)
+            val correctionsContext = allMsgs
+                .filter { !it.isUser && it.corrections.isNotEmpty() }
+                .takeLast(20)
+                .flatMap { it.corrections }
+                .joinToString("\n- ")
+
+            val prompt = """
+                Analyze this user's learning history:
+                - Total Messages sent: $totalMessages
+                - Total Errors found: $totalErrors
+                - Recent Corrections:
+                - $correctionsContext
+                
+                Please generate the progress report JSON.
+            """.trimIndent()
+
+            val response = model.generateContent(prompt)
+            val jsonText = response.text ?: ""
+            val parsed = parseProgressResponse(jsonText)
+
+            narrativeSummary = parsed.summary
+            recommendations.clear()
+            recommendations.addAll(parsed.recommendations)
+        } catch (e: Exception) {
+            Log.e("TutorViewModel", "Error generating summary", e)
+            narrativeSummary = "Unable to generate summary at this time. Try again later."
+        }
+    }
+
     // --- START A LESSON ---
     fun startLesson() {
         viewModelScope.launch {
@@ -146,8 +218,14 @@ class TutorViewModel : ViewModel() {
                 // Map to existing UI model for compatibility
                 val parsed = TutorResponse(
                     feedback = jsonResponse.corrections.joinToString("\n"),
-                    targetText = jsonResponse.reply
+                    targetText = jsonResponse.reply,
+                    nativeText = jsonResponse.translation,
+                    vocabulary = jsonResponse.vocabulary
                 )
+
+                if (jsonResponse.vocabulary.isNotEmpty()) {
+                    lastVocabulary = jsonResponse.vocabulary
+                }
 
                 val assistantMessage = UIChatMessage(
                     role = "assistant",
@@ -219,8 +297,14 @@ class TutorViewModel : ViewModel() {
                 // Map to existing UI model for compatibility
                 val parsed = TutorResponse(
                     feedback = jsonResponse.corrections.joinToString("\n"),
-                    targetText = jsonResponse.reply
+                    targetText = jsonResponse.reply,
+                    nativeText = jsonResponse.translation,
+                    vocabulary = jsonResponse.vocabulary
                 )
+
+                if (jsonResponse.vocabulary.isNotEmpty()) {
+                    lastVocabulary = jsonResponse.vocabulary
+                }
 
                 val assistantMessage = UIChatMessage(
                     role = "assistant",

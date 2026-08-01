@@ -11,11 +11,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.*
 import androidx.core.content.ContextCompat
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -125,6 +129,7 @@ fun MainAppScreen(viewModel: TutorViewModel) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var userInputText by remember { mutableStateOf("") }
+    var selectedView by remember { mutableIntStateOf(0) } // 0: Chat, 1: Progress
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -139,7 +144,7 @@ fun MainAppScreen(viewModel: TutorViewModel) {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("🧑‍🏫 Thomas") },
+                    title = { Text(if (selectedView == 0) "🧑‍🏫 Thomas" else "📊 Learning Progress") },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
                             Icon(Icons.Default.Menu, contentDescription = "Profile")
@@ -151,18 +156,37 @@ fun MainAppScreen(viewModel: TutorViewModel) {
                 )
             },
             bottomBar = {
-                if (viewModel.isLessonStarted) {
-                    ChatInputField(
-                        text = userInputText,
-                        onTextChange = { userInputText = it },
-                        onSend = {
-                            if (userInputText.isNotBlank()) {
-                                viewModel.sendMessage(userInputText)
-                                userInputText = ""
-                            }
-                        },
-                        isLoading = viewModel.isLoading
-                    )
+                Column {
+                    if (selectedView == 0 && viewModel.isLessonStarted) {
+                        ChatInputField(
+                            text = userInputText,
+                            onTextChange = { userInputText = it },
+                            onSend = {
+                                if (userInputText.isNotBlank()) {
+                                    viewModel.sendMessage(userInputText)
+                                    userInputText = ""
+                                }
+                            },
+                            isLoading = viewModel.isLoading
+                        )
+                    }
+                    NavigationBar {
+                        NavigationBarItem(
+                            selected = selectedView == 0,
+                            onClick = { selectedView = 0 },
+                            icon = { Icon(Icons.Default.Chat, contentDescription = null) },
+                            label = { Text("Chat") }
+                        )
+                        NavigationBarItem(
+                            selected = selectedView == 1,
+                            onClick = { 
+                                selectedView = 1
+                                viewModel.fetchProgressReport()
+                            },
+                            icon = { Icon(Icons.Default.QueryStats, contentDescription = null) },
+                            label = { Text("Progress") }
+                        )
+                    }
                 }
             }
         ) { innerPadding ->
@@ -171,16 +195,20 @@ fun MainAppScreen(viewModel: TutorViewModel) {
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                if (!viewModel.isLessonStarted) {
-                    WelcomeScreen(
-                        userName = viewModel.currentUser?.email?.split("@")?.get(0) ?: "Friend",
-                        onStart = { viewModel.startLesson() }
-                    )
+                if (selectedView == 0) {
+                    if (!viewModel.isLessonStarted) {
+                        WelcomeScreen(
+                            userName = viewModel.currentUser?.email?.split("@")?.get(0) ?: "Friend",
+                            onStart = { viewModel.startLesson() }
+                        )
+                    } else {
+                        ChatAndVocabFeed(viewModel = viewModel)
+                    }
                 } else {
-                    ChatAndVocabFeed(viewModel = viewModel)
+                    ProgressSection(viewModel = viewModel)
                 }
 
-                if (viewModel.isLoading) {
+                if (viewModel.isLoading || viewModel.isProgressLoading) {
                     CircularProgressIndicator(
                         modifier = Modifier.align(Alignment.Center)
                     )
@@ -301,6 +329,80 @@ fun ConfigDrawerContent(viewModel: TutorViewModel, onClose: () -> Unit) {
     }
 }
 
+@Composable
+fun ProgressSection(viewModel: TutorViewModel) {
+    val scrollState = rememberScrollState()
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp)
+    ) {
+        Text("📈 Your Stats", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(modifier = Modifier.fillMaxWidth()) {
+            StatCard(label = "Total Chats", value = viewModel.totalMessages.toString(), modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.width(8.dp))
+            StatCard(label = "Error Count", value = viewModel.totalErrors.toString(), modifier = Modifier.weight(1f))
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("🎯 Top Topics", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Row(modifier = Modifier.padding(vertical = 8.dp)) {
+            viewModel.topTopics.forEach { topic ->
+                SuggestionChip(
+                    onClick = { },
+                    label = { Text(topic) },
+                    modifier = Modifier.padding(end = 4.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("🗣️ Thomas's Feedback", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(viewModel.narrativeSummary)
+            }
+        }
+
+        if (viewModel.recommendations.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("🚀 Recommended for You", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            viewModel.recommendations.forEach { rec ->
+                ListItem(
+                    headlineContent = { Text(rec) },
+                    leadingContent = { Icon(Icons.Default.QueryStats, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+@Composable
+fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(value, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(label, fontSize = 12.sp)
+        }
+    }
+}
+
 // --- WELCOME SCREEN ---
 @Composable
 fun WelcomeScreen(userName: String, onStart: () -> Unit) {
@@ -344,7 +446,13 @@ fun ChatAndVocabFeed(viewModel: TutorViewModel) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("💡 Smart Cheat Sheet", fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(viewModel.lastVocabulary)
+                        Box(
+                            modifier = Modifier
+                                .heightIn(max = 200.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Text(viewModel.lastVocabulary)
+                        }
                     }
                 }
             }

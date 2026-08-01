@@ -26,7 +26,30 @@ data class ChatMessage(
             "topics" to topics
         )
     }
+
+    companion object {
+        fun fromMap(map: Map<String, Any>): ChatMessage {
+            return ChatMessage(
+                id = map["id"] as? String ?: "",
+                text = map["text"] as? String ?: "",
+                isUser = map["isUser"] as? Boolean ?: false,
+                timestamp = (map["timestamp"] as? Long) ?: 0L,
+                errorCount = (map["errorCount"] as? Long)?.toInt() ?: 0,
+                corrections = (map["corrections"] as? List<String>) ?: emptyList(),
+                topics = (map["topics"] as? List<String>) ?: emptyList()
+            )
+        }
+    }
 }
+
+/**
+ * Data model for parsing Gemini's JSON response containing learning progress analysis.
+ */
+@Serializable
+data class ProgressResponse(
+    val summary: String,
+    val recommendations: List<String>
+)
 
 /**
  * Data model for parsing Gemini's JSON response containing linguistic analysis.
@@ -36,5 +59,7 @@ data class GeminiChatResponse(
     val reply: String,
     val errorCount: Int,
     val corrections: List<String>,
-    val topics: List<String>
+    val topics: List<String>,
+    val vocabulary: String = "",
+    val translation: String = ""
 )
