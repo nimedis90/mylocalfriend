@@ -39,6 +39,7 @@ class TutorViewModel : ViewModel() {
     var isLoading by mutableStateOf(false)
     var isLessonStarted by mutableStateOf(false)
     var lastVocabulary by mutableStateOf("")
+    var pendingContextualSummary by mutableStateOf<String?>(null)
 
     // --- PROGRESS STATE ---
     var totalMessages by mutableIntStateOf(0)
@@ -47,6 +48,7 @@ class TutorViewModel : ViewModel() {
     var narrativeSummary by mutableStateOf("No progress data yet. Keep chatting to see Thomas's feedback!")
     var recommendations = mutableStateListOf<String>()
     var isProgressLoading by mutableStateOf(false)
+    var isRefreshingProgress by mutableStateOf(false)
 
     init {
         observeAuthState()
@@ -126,13 +128,16 @@ class TutorViewModel : ViewModel() {
     }
 
     // --- PROGRESS DASHBOARD ---
-    fun fetchProgressReport() {
+    fun fetchProgressReport(isManualRefresh: Boolean = false) {
         val uid = currentUser?.uid ?: return
         viewModelScope.launch {
-            isProgressLoading = true
+            if (isManualRefresh) isRefreshingProgress = true else isProgressLoading = true
+            
+            Log.d("TutorViewModel", "Fetching progress report for $uid (manual=$isManualRefresh)")
             val result = userRepository.getAllMessages(uid)
             if (result.isSuccess) {
                 val allMsgs = result.getOrDefault(emptyList())
+                Log.d("TutorViewModel", "Total messages retrieved: ${allMsgs.size}")
                 
                 // Quantitative analysis
                 totalMessages = allMsgs.count { it.isUser }
@@ -145,12 +150,20 @@ class TutorViewModel : ViewModel() {
                 topTopics.clear()
                 topTopics.addAll(topicsMap.entries.sortedByDescending { it.value }.take(5).map { it.key })
 
+                Log.d("TutorViewModel", "Stats updated: msgs=$totalMessages, errors=$totalErrors, topics=${topTopics.size}")
+
                 // Qualitative analysis via Gemini
                 if (allMsgs.isNotEmpty()) {
                     generateNarrativeSummary(allMsgs)
+                } else {
+                    narrativeSummary = "No messages found yet. Start a lesson to track your progress!"
                 }
+            } else {
+                Log.e("TutorViewModel", "Failed to fetch messages", result.exceptionOrNull())
+                narrativeSummary = "Error fetching your history. Please check your connection."
             }
-            isProgressLoading = false
+            
+            if (isManualRefresh) isRefreshingProgress = false else isProgressLoading = false
         }
     }
 
@@ -189,6 +202,81 @@ class TutorViewModel : ViewModel() {
     }
 
     // --- START A LESSON ---
+    fun startLessonWithContext(newsSummary: String) {
+        viewModelScope.launch {
+            isLoading = true
+            messages.clear()
+            lastVocabulary = ""
+
+            val model = geminiHelper.getModel(
+                area = userPrefs.targetArea,
+                nativeLang = userPrefs.nativeLang,
+                targetLang = userPrefs.targetLang,
+                level = userPrefs.targetLevel,
+                topics = userPrefs.favoriteTopics
+            )
+
+            chatInstance = model.startChat()
+
+            val contextualPrompt = "The user just read this local update: \"$newsSummary\". " +
+                    "Start a friendly conversation about it in ${userPrefs.targetLang}, " +
+                    "asking their opinion or suggesting an activity. " +
+                    "Follow the JSON structure (reply, errorCount, corrections, topics, vocabulary, translation)."
+
+            try {
+                val response = model.generateContent(contextualPrompt)
+                val responseText = response.text ?: ""
+                val jsonResponse = parseGeminiJsonResponse(responseText)
+
+                val parsed = TutorResponse(
+                    feedback = jsonResponse.corrections.joinToString("\n"),
+                    targetText = jsonResponse.reply,
+                    nativeText = jsonResponse.translation,
+                    vocabulary = jsonResponse.vocabulary
+                )
+
+                if (jsonResponse.vocabulary.isNotEmpty()) {
+                    lastVocabulary = jsonResponse.vocabulary
+                }
+
+                messages.add(
+                    UIChatMessage(
+                        role = "assistant",
+                        content = responseText,
+                        parsedResponse = parsed,
+                        jsonResponse = jsonResponse
+                    )
+                )
+
+                currentUser?.uid?.let { uid ->
+                    userRepository.saveChatMessage(
+                        uid,
+                        DataChatMessage(
+                            id = UUID.randomUUID().toString(),
+                            text = jsonResponse.reply,
+                            isUser = false,
+                            timestamp = System.currentTimeMillis(),
+                            errorCount = jsonResponse.errorCount,
+                            corrections = jsonResponse.corrections,
+                            topics = jsonResponse.topics
+                        )
+                    )
+                }
+
+                isLessonStarted = true
+            } catch (e: Exception) {
+                messages.add(
+                    UIChatMessage(
+                        role = "assistant",
+                        content = "Error starting lesson: ${e.localizedMessage}"
+                    )
+                )
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
     fun startLesson() {
         viewModelScope.launch {
             isLoading = true

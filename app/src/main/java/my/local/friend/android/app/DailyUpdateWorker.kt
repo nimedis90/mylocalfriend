@@ -38,7 +38,7 @@ class DailyUpdateWorker(
             topics = prefs.favoriteTopics
         )
 
-        val prompt = "Give me a very short, catchy 1-sentence news headline and a 1-sentence summary of today's interesting events and weather in ${prefs.targetArea} related to ${prefs.favoriteTopics} and find some related activities in the same area or close areas. Format it as: HEADLINE: [headline] SUMMARY: [summary]. Use the user's target language (${prefs.targetLang}) for this summary so they can understand it quickly."
+        val prompt = "Give me a very short, catchy 1-sentence news headline and a 1-sentence summary of today's interesting events and weather in ${prefs.targetArea} related to ${prefs.favoriteTopics} and find some related activities in the same area or close areas. Format it as: HEADLINE: [headline] SUMMARY: [summary]. Use the user's target language (${prefs.targetLang}) for this summary."
 
         return try {
             val response = model.generateContent(prompt)

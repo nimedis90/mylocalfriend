@@ -15,6 +15,7 @@ class NotificationHelper(private val context: Context) {
     companion object {
         const val CHANNEL_ID = "daily_updates_channel"
         const val NOTIFICATION_ID = 1001
+        const val EXTRA_NEWS_SUMMARY = "extra_news_summary"
     }
 
     fun createNotificationChannel() {
@@ -34,10 +35,11 @@ class NotificationHelper(private val context: Context) {
     fun showNotification(title: String, message: String) {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra(EXTRA_NEWS_SUMMARY, message)
         }
         val pendingIntent: PendingIntent = PendingIntent.getActivity(
             context, 0, intent,
-            PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)

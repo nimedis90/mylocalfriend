@@ -1,6 +1,7 @@
 package my.local.friend.android.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,11 +44,25 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        handleIntent(intent)
+
         setContent {
             MaterialTheme {
                 NotificationPermissionHandler()
                 AppNavigation(viewModel = viewModel)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        intent?.getStringExtra(NotificationHelper.EXTRA_NEWS_SUMMARY)?.let { summary ->
+            viewModel.pendingContextualSummary = summary
         }
     }
 }
@@ -131,6 +147,15 @@ fun MainAppScreen(viewModel: TutorViewModel) {
     val scope = rememberCoroutineScope()
     var userInputText by remember { mutableStateOf("") }
     var selectedView by remember { mutableIntStateOf(0) } // 0: Chat, 1: Progress
+
+    // Handle Contextual Lesson from Notification
+    LaunchedEffect(viewModel.pendingContextualSummary) {
+        viewModel.pendingContextualSummary?.let { summary ->
+            viewModel.startLessonWithContext(summary)
+            viewModel.pendingContextualSummary = null
+            selectedView = 0 // Ensure we are on chat view
+        }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -330,18 +355,24 @@ fun ConfigDrawerContent(viewModel: TutorViewModel, onClose: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProgressSection(viewModel: TutorViewModel) {
     val scrollState = rememberScrollState()
     
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(16.dp)
+    PullToRefreshBox(
+        isRefreshing = viewModel.isRefreshingProgress,
+        onRefresh = { viewModel.fetchProgressReport(isManualRefresh = true) },
+        modifier = Modifier.fillMaxSize()
     ) {
-        Text("📈 Your Stats", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(12.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(16.dp)
+        ) {
+            Text("📈 Your Stats", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(12.dp))
 
         Row(modifier = Modifier.fillMaxWidth()) {
             StatCard(label = "Total Chats", value = viewModel.totalMessages.toString(), modifier = Modifier.weight(1f))
@@ -386,6 +417,7 @@ fun ProgressSection(viewModel: TutorViewModel) {
         
         Spacer(modifier = Modifier.height(32.dp))
     }
+}
 }
 
 @Composable
