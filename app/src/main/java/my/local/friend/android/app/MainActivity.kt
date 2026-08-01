@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.rememberScrollState
@@ -434,30 +435,6 @@ fun ChatAndVocabFeed(viewModel: TutorViewModel) {
             .fillMaxSize()
             .padding(12.dp)
     ) {
-        // Smart Cheat Sheet Card
-        if (viewModel.lastVocabulary.isNotEmpty()) {
-            item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text("💡 Smart Cheat Sheet", fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Box(
-                            modifier = Modifier
-                                .heightIn(max = 200.dp)
-                                .verticalScroll(rememberScrollState())
-                        ) {
-                            Text(viewModel.lastVocabulary)
-                        }
-                    }
-                }
-            }
-        }
-
         // Chat Messages
         items(viewModel.messages) { msg ->
             if (msg.role == "user") {
@@ -508,6 +485,26 @@ fun AssistantMessageCard(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             if (response != null) {
+                // 0. Smart Cheat Sheet (Vocabulary)
+                if (response.vocabulary.isNotEmpty()) {
+                    Text("💡 Smart Cheat Sheet", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .heightIn(max = 150.dp)
+                            .fillMaxWidth()
+                            .background(
+                                MaterialTheme.colorScheme.secondaryContainer,
+                                shape = MaterialTheme.shapes.small
+                            )
+                            .padding(8.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text(response.vocabulary, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
                 // 1. Feedback Section
                 if (response.feedback.isNotEmpty()) {
                     Text("📝 Language Feedback:", fontWeight = FontWeight.Bold)
