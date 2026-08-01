@@ -10,6 +10,7 @@
 * **Secure Authentication**: User accounts with Login, Sign Up, and Password Reset functionality via Firebase.
 * **Persistent Profiles**: User preferences (languages, interests, level) are stored securely in Firestore.
 * **Bilingual UI Feed**: Toggle effortlessly between the **Target Language** text and **Native Language** translation.
+* **Daily Push Notifications**: Receive a fresh summary of local weather and events every morning at 9:00 AM, powered by Gemini.
 * **Smart Cheat Sheet**: Dynamically extracts key nouns, useful verbs, idioms, and grammar tips.
 
 ---
@@ -18,6 +19,7 @@
 
 * **UI Framework**: [Jetpack Compose](https://developer.android.com/jetpack/compose) (Material 3)
 * **Backend**: [Firebase](https://firebase.google.com/) (Auth & Firestore)
+* **Background Processing**: [Android WorkManager](https://developer.android.com/topic/libraries/architecture/workmanager) for daily scheduled notifications.
 * **AI Model**: Google Gemini API (`gemini-3.1-flash-lite`)
 * **Architecture**: MVVM with Kotlin Coroutines & Flow.
 
@@ -70,7 +72,8 @@ This app requires Firebase for authentication and database storage.
 1. **Sign Up**: Create an account with your email.
 2. **Onboarding**: Complete the one-time setup (Mother tongue, Target language, etc.).
 3. **Practice**: Thomas will fetch news based on your profile.
-4. **Update Profile**: Tap the menu (☰) icon to change your location, topics, or level anytime. Tap "Save & Restart" to refresh the lesson.
+4. **Daily Updates**: Stay informed with a notification every morning at 9:00 AM containing local news in your target language.
+5. **Update Profile**: Tap the menu (☰) icon to change your location, topics, or level anytime. Tap "Save & Restart" to refresh the lesson.
 
 ---
 

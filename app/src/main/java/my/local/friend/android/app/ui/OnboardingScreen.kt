@@ -21,8 +21,11 @@ fun OnboardingScreen(
     var nativeLang by remember { mutableStateOf("") }
     var targetLang by remember { mutableStateOf("") }
     var targetArea by remember { mutableStateOf("") }
+    var targetLevel by remember { mutableFloatStateOf(0f) }
     var selectedTopics by remember { mutableStateOf("") }
     val scrollState = rememberScrollState()
+
+    val levels = listOf("A1", "A2", "B1", "B2", "C1", "C2")
 
     Column(
         modifier = Modifier
@@ -57,6 +60,22 @@ fun OnboardingScreen(
             enabled = !isLoading
         )
 
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text(
+            text = "Your Current Proficiency: ${levels[targetLevel.toInt()]}",
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.align(Alignment.Start)
+        )
+        Slider(
+            value = targetLevel,
+            onValueChange = { targetLevel = it },
+            valueRange = 0f..5f,
+            steps = 4,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isLoading
+        )
+
         Spacer(modifier = Modifier.height(16.dp))
 
         OutlinedTextField(
@@ -86,6 +105,7 @@ fun OnboardingScreen(
                         UserPreferences(
                             nativeLang = nativeLang,
                             targetLang = targetLang,
+                            targetLevel = levels[targetLevel.toInt()],
                             targetArea = targetArea,
                             favoriteTopics = selectedTopics,
                             isOnboarded = true

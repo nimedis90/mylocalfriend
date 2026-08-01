@@ -1,10 +1,16 @@
 package my.local.friend.android.app
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.*
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -33,7 +39,36 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
+                NotificationPermissionHandler()
                 AppNavigation(viewModel = viewModel)
+            }
+        }
+    }
+}
+
+@Composable
+fun NotificationPermissionHandler() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        var hasPermission by remember {
+            mutableStateOf(
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+            )
+        }
+
+        val launcher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestPermission(),
+            onResult = { isGranted ->
+                hasPermission = isGranted
+            }
+        )
+
+        LaunchedEffect(Unit) {
+            if (!hasPermission) {
+                launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
     }
@@ -162,7 +197,12 @@ fun ConfigDrawerContent(viewModel: TutorViewModel, onClose: () -> Unit) {
     var nativeLang by remember { mutableStateOf(prefs.nativeLang) }
     var targetLang by remember { mutableStateOf(prefs.targetLang) }
     var targetArea by remember { mutableStateOf(prefs.targetArea) }
-    var targetLevel by remember { mutableStateOf(prefs.targetLevel) }
+    
+    val levels = listOf("A1", "A2", "B1", "B2", "C1", "C2")
+    var targetLevelIndex by remember { 
+        mutableFloatStateOf(levels.indexOf(prefs.targetLevel).coerceAtLeast(0).toFloat()) 
+    }
+    
     var favoriteTopics by remember { mutableStateOf(prefs.favoriteTopics) }
 
     Column(
@@ -189,12 +229,14 @@ fun ConfigDrawerContent(viewModel: TutorViewModel, onClose: () -> Unit) {
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        OutlinedTextField(
-            value = targetLevel,
-            onValueChange = { targetLevel = it },
-            label = { Text("Level (A1, A2, B1...)") },
+        Text("Current Level: ${levels[targetLevelIndex.toInt()]}", fontWeight = FontWeight.Bold)
+        Slider(
+            value = targetLevelIndex,
+            onValueChange = { targetLevelIndex = it },
+            valueRange = 0f..5f,
+            steps = 4,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -226,7 +268,7 @@ fun ConfigDrawerContent(viewModel: TutorViewModel, onClose: () -> Unit) {
                     prefs.copy(
                         nativeLang = nativeLang,
                         targetLang = targetLang,
-                        targetLevel = targetLevel,
+                        targetLevel = levels[targetLevelIndex.toInt()],
                         targetArea = targetArea,
                         favoriteTopics = favoriteTopics
                     )
